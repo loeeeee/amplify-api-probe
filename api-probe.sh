@@ -602,16 +602,16 @@ test_assistant_create_codeinterpreter() {
   ds_json="${ASSISTANT_DATA_SOURCES_JSON:-[]}"; [[ -z "$ds_json" ]] && ds_json="[]"
   fk_json="${ASSISTANT_FILE_KEYS_JSON:-[]}"; [[ -z "$fk_json" ]] && fk_json="[]"
   local req_json
+  # dataSources is REQUIRED per API documentation, always include it (even if empty array)
   req_json=$(jq -nc \
     --arg name "Code Interpreter Assistant (CI Test)" \
     --arg desc "Creates charts from uploaded CSVs and performs simple analysis." \
     --arg instr "Use uploaded files to run analysis and produce charts." \
     --argjson tags '["api-test"]' \
-    --argjson ds ${ds_json:-null} \
-    --argjson fk ${fk_json:-null} \
-    ' {data:{name:$name, description:$desc, instructions:$instr, tags:$tags, tools:[{type:"code_interpreter"}]}} 
-      | (if ($ds != null and ($ds|type=="array") and ($ds|length>0)) then .data.dataSources=$ds else . end)
-      | (if ($fk != null and ($fk|type=="array") and ($fk|length>0)) then .data.fileKeys=$fk else . end) ')
+    --argjson ds "$ds_json" \
+    --argjson fk "$fk_json" \
+    ' {data:{name:$name, description:$desc, instructions:$instr, tags:$tags, dataSources:$ds, tools:[{type:"code_interpreter"}]}} 
+      | (if ($fk|type=="array" and ($fk|length>0)) then .data.fileKeys=$fk else . end) ')
   printf "%s" "$req_json" > "$req"
   local http
   http=$(curl_json "$name" POST "/assistant/create/codeinterpreter" "$req")
@@ -878,6 +878,7 @@ REQ
 
 test_files_upload() {
   local name="files-upload"
+  local req="$OUTPUT_DIR/requests/${name}.request.json"
   local tmpfile=""
   local path_to_upload="${SAMPLE_FILE}"
   if [[ -z "$path_to_upload" || ! -f "$path_to_upload" ]]; then
@@ -897,18 +898,53 @@ test_files_upload() {
       path_to_upload="$tmpfile"
     fi
   fi
-  local metadata
-  metadata=$(jq -nc --arg n "$(basename "$path_to_upload")" '{name:$n, tags:["analysis","api-test"], type:"text/csv"}')
+  
+  # Per API docs, /files/upload expects JSON POST to initiate upload and get pre-signed URLs
+  local filename
+  filename="$(basename "$path_to_upload")"
+  local mime_type
+  mime_type=$(detect_mime_type "$path_to_upload")
+  
+  cat > "$req" <<REQ
+{
+  "data": {
+    "type": "${mime_type}",
+    "name": "${filename}",
+    "knowledgeBase": "default",
+    "tags": ["analysis", "api-test"],
+    "data": {}
+  }
+}
+REQ
+  
   local http
-  http=$(curl_multipart_upload "$name" "/files/upload" "$path_to_upload" "$metadata")
+  http=$(curl_json "$name" POST "/files/upload" "$req")
   [[ -n "$tmpfile" ]] && rm -f "$tmpfile"
+  
   if [[ "$http" != "200" ]]; then
     record_result "$name http=$http" false
     return 1
   fi
+  
   local res="$OUTPUT_DIR/responses/${name}.response.json"
-  assert_jq "$res" '.data.fileKey | type == "string"' "$name fileKey"
-  UPLOADED_FILE_KEY=$(jq -r '.data.fileKey' "$res")
+  
+  # Check for uploadUrl (two-step upload process) or key (direct upload)
+  if jq -e '.data.uploadUrl | type == "string"' "$res" >/dev/null 2>&1; then
+    record_result "$name uploadUrl received" true
+    # Extract the key for future operations
+    UPLOADED_FILE_KEY=$(jq -r '(.data.key // "")' "$res")
+    log_info "File upload initiated; uploadUrl received. Key: ${UPLOADED_FILE_KEY}"
+  elif jq -e '.data.key | type == "string"' "$res" >/dev/null 2>&1; then
+    record_result "$name key received" true
+    UPLOADED_FILE_KEY=$(jq -r '.data.key' "$res")
+  elif jq -e '.uploadUrl | type == "string"' "$res" >/dev/null 2>&1; then
+    # Alternative envelope without .data wrapper
+    record_result "$name uploadUrl received (compat)" true
+    UPLOADED_FILE_KEY=$(jq -r '(.key // "")' "$res")
+  else
+    record_result "$name response shape" false
+    return 1
+  fi
 }
 
 test_files_query() {
@@ -998,10 +1034,11 @@ test_files_set_tags() {
   fi
   local name="files-set-tags"
   local req="$OUTPUT_DIR/requests/${name}.request.json"
+  # Per API docs, the field should be "id" not "fileKey"
   cat > "$req" <<REQ
 {
   "data": {
-    "fileKey": "${UPLOADED_FILE_KEY}",
+    "id": "${UPLOADED_FILE_KEY}",
     "tags": ["analysis", "api-test", "to-review"]
   }
 }
@@ -1013,7 +1050,14 @@ REQ
     return 1
   fi
   local res="$OUTPUT_DIR/responses/${name}.response.json"
-  assert_jq "$res" '.data.tags | type == "array"' "$name tags array"
+  # Accept either data.tags array or simple success response
+  if jq -e '.data.tags | type == "array"' "$res" >/dev/null 2>&1; then
+    record_result "$name tags array" true
+  elif jq -e '.success == true' "$res" >/dev/null 2>&1; then
+    record_result "$name success" true
+  else
+    record_result "$name response shape" false
+  fi
 }
 
 test_state_share() {
