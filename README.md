@@ -178,10 +178,13 @@ Chat with a selected model (single turn or multi-turn).
 - `data.max_tokens`: integer
 - `data.dataSources`: array of strings
 
-**Note**: The `data.options.assistantId` field is currently not working and will return "Invalid assistant id" error.
+**Optional Fields (Assistant-bound Chat)**:
+- `data.options.assistantId`: string (works with `astp/` format assistant IDs from general assistant creation)
+
+**Important Note**: The `data.options.assistantId` field works with assistant IDs in `astp/` format (from `/assistant/create`) but **NOT** with `yizhou.bi@vanderbilt.edu/ast/` format IDs (from `/assistant/create/codeinterpreter`).
 
 <details>
-<summary>Example Request</summary>
+<summary>Example Request (Basic Chat)</summary>
 
 ```json
 {
@@ -197,6 +200,27 @@ Chat with a selected model (single turn or multi-turn).
     "max_tokens": 512,
     "dataSources": ["global/09342587234089234890.content.json"],
     "skipRag": false
+  }
+}
+```
+</details>
+
+<details>
+<summary>Example Request (Assistant-bound Chat)</summary>
+
+```json
+{
+  "data": {
+    "messages": [
+      { "role": "user", "content": "What is 2+2?" }
+    ],
+    "options": {
+      "model": { "id": "gpt-4o-mini" },
+      "assistantId": "astp/14f5e59a-ffce-41ed-a38d-0a9fc11f074e"
+    },
+    "temperature": 0.7,
+    "max_tokens": 4000,
+    "dataSources": []
   }
 }
 ```
@@ -246,7 +270,8 @@ Some deployments may return a more detailed structured format:
 - **Production API** returns simplified envelope: `{"success": true, "message": "...", "data": "<answer>"}`
 - The `data` field contains the direct answer as a string in most cases
 - All responses include `success` boolean indicating request status
-- Invalid `assistantId` may return: `{"success": false, "message": "Invalid assistant id"}`
+- **Assistant ID Format Requirements**: Only `astp/` format assistant IDs (from general assistant creation) work with `/chat`
+- Invalid `assistantId` format returns: `{"success": false, "message": "Invalid assistant id"}`
 - Both `skipRag: true` and `skipRag: false` are valid
 
 ---
@@ -491,34 +516,6 @@ Some deployments may return a direct array:
 ```
 </details>
 
-#### POST /assistant/delete
-Delete an assistant (general endpoint).
-
-**Required Fields**:
-- `data.assistantId`: string
-
-<details>
-<summary>Example Request/Response</summary>
-
-**Request**:
-```json
-{
-  "data": {
-    "assistantId": "ast/87423-20240508-abc123"
-  }
-}
-```
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "deleted": true
-  }
-}
-```
-</details>
 
 #### DELETE /assistant/openai/delete
 Delete an assistant (OpenAI-backed alternative endpoint).
@@ -982,7 +979,53 @@ Complete workflow for creating a general assistant, uploading files, and managin
 ```
 </details>
 
-### Scenario C: Dual-Retrieval Search with File Tagging
+### Scenario C: Assistant-bound Chat Workflow
+
+<details>
+<summary>Step-by-Step Example</summary>
+
+**1. Create General Assistant**
+```json
+{
+  "data": {
+    "name": "Math Assistant",
+    "description": "Helps with mathematical calculations and explanations",
+    "instructions": "Provide clear and accurate mathematical solutions.",
+    "tags": ["math", "calculations"],
+    "dataSources": []
+  }
+}
+```
+
+**2. Chat with Assistant (using the returned `astp/` format assistantId)**
+```json
+{
+  "data": {
+    "messages": [
+      { "role": "user", "content": "What is 15 * 23?" }
+    ],
+    "options": {
+      "model": { "id": "gpt-4o-mini" },
+      "assistantId": "astp/14f5e59a-ffce-41ed-a38d-0a9fc11f074e"
+    },
+    "temperature": 0.7,
+    "max_tokens": 4000,
+    "dataSources": []
+  }
+}
+```
+
+**3. Response**
+```json
+{
+  "success": true,
+  "message": "Chat endpoint response retrieved",
+  "data": "15 * 23 = 345"
+}
+```
+</details>
+
+### Scenario D: Dual-Retrieval Search with File Tagging
 
 <details>
 <summary>Step-by-Step Example</summary>
@@ -1037,7 +1080,7 @@ Complete workflow for creating a general assistant, uploading files, and managin
 This API documentation is validated against a comprehensive test suite (`api-probe.sh`) with enhanced format discovery capabilities:
 - **100% endpoint coverage** (20/20 endpoints tested)
 - **20 working endpoints** documented here
-- **3 endpoints with authorization/validation issues** (not API implementation problems)
+- **2 endpoints with authorization/validation issues** (not API implementation problems)
 - Automated request/response validation with multi-format testing
 - Support for all endpoint categories: models, chat, retrieval, state, files, assistants
 - **Enhanced probe script** with format discovery capabilities for comprehensive testing
@@ -1055,12 +1098,13 @@ This API documentation is validated against a comprehensive test suite (`api-pro
 
 **✅ Fully Working (20 endpoints):**
 - GET /available_models
-- POST /chat (without assistantId)
+- POST /chat (basic chat)
+- POST /chat (with `astp/` format assistantId) ✅ **FIXED** - Works with correct assistant ID format
 - POST /embedding-dual-retrieval
 - POST /assistant/create
 - POST /assistant/create/codeinterpreter ✅ **FIXED** - Works with empty dataSources
 - GET /assistant/list
-- POST /assistant/share
+- POST /assistant/share ✅ **FIXED** - Works with valid email addresses
 - POST /assistant/files/download/codeinterpreter (skipped when no output files)
 - DELETE /assistant/openai/delete ✅ **FIXED** - Works with correct DELETE method
 - DELETE /assistant/openai/thread/delete ✅ **FIXED** - Works with correct DELETE method
@@ -1073,19 +1117,19 @@ This API documentation is validated against a comprehensive test suite (`api-pro
 - GET /state/share
 - POST /state/share/load
 
-**❌ Not Working (3 endpoints - Authorization/Validation Issues):**
-- POST /chat (with assistantId) - "Invalid assistant id" error
+**❌ Not Working (2 endpoints - Authorization/Validation Issues):**
 - POST /assistant/chat/codeinterpreter - "Invalid data or path" error (implementation issue)
 - POST /assistant/delete - "You are not authorized to delete this assistant" (authorization issue)
 
 ### Key Corrections Made
 
-1. **Files Tags Delete**: Use `"tag"` (singular) not `"tags"` (plural)
-2. **OpenAI Endpoints**: Use DELETE method with query parameters, not POST with JSON body
-3. **File Upload**: Two-step process with pre-signed URLs, not multipart form data
-4. **Response Format**: All responses include `success` boolean field
-5. **Assistant Create Code Interpreter**: Use empty `dataSources: []` array to avoid authorization issues
-6. **Enhanced Probe Script**: Implemented format discovery capabilities for comprehensive testing
+1. **Chat Endpoint with AssistantID**: **FIXED** - Works with `astp/` format assistant IDs from general assistant creation
+2. **Files Tags Delete**: Use `"tag"` (singular) not `"tags"` (plural)
+3. **OpenAI Endpoints**: Use DELETE method with query parameters, not POST with JSON body
+4. **File Upload**: Two-step process with pre-signed URLs, not multipart form data
+5. **Response Format**: All responses include `success` boolean field
+6. **Assistant Create Code Interpreter**: Use empty `dataSources: []` array to avoid authorization issues
+7. **Enhanced Probe Script**: Implemented format discovery capabilities for comprehensive testing
 
 ---
 
