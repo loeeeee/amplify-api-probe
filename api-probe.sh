@@ -17,7 +17,7 @@ Usage:
   scripts/amplify-api-test.sh \
     [--token TOKEN | --token-file PATH | env AMPLIFY_API_TOKEN] \
     [--base-url URL | env AMPLIFY_API_BASE_URL] \
-    [--mode all|smoke|assistants|files|embed] \
+    [--mode all|smoke|assistants|files|embed|state] \
     [--output-dir DIR] \
     [--sample-file PATH] \
     [--model-id ID] \
@@ -546,6 +546,54 @@ REQ
   fi
 }
 
+test_assistant_create() {
+  local name="assistant-create"
+  local req="$OUTPUT_DIR/requests/${name}.request.json"
+  
+  # For general assistant creation, dataSources must be full objects (not just IDs)
+  # This test creates a basic assistant without data sources to avoid complexity
+  cat > "$req" <<REQ
+{
+  "data": {
+    "name": "General Assistant (API Test)",
+    "description": "A general-purpose assistant for testing the /assistant/create endpoint",
+    "tags": ["api-test", "general"],
+    "instructions": "Respond to user queries about general knowledge topics. Be helpful and concise.",
+    "disclaimer": "This assistant's responses are for informational purposes only.",
+    "dataSources": [],
+    "dataSourceOptions": {
+      "insertAttachedDocumentsMetadata": false,
+      "insertAttachedDocuments": false,
+      "insertConversationDocuments": false,
+      "disableDataSources": true,
+      "insertConversationDocumentsMetadata": false,
+      "ragConversationDocuments": false,
+      "ragAttachedDocuments": false
+    }
+  }
+}
+REQ
+  
+  local http
+  http=$(curl_json "$name" POST "/assistant/create" "$req")
+  if [[ "$http" != "200" ]]; then
+    record_result "$name http=$http" false
+    return 1
+  fi
+  
+  local res="$OUTPUT_DIR/responses/${name}.response.json"
+  if jq -e '.data.assistantId | type == "string"' "$res" >/dev/null 2>&1; then
+    record_result "$name assistantId" true
+    # Capture assistant ID for potential deletion
+    ASSISTANT_ID=$(jq -r '.data.assistantId' "$res")
+  elif jq -e '.success == true' "$res" >/dev/null 2>&1; then
+    record_result "$name success" true
+  else
+    record_result "$name response shape" false
+    return 1
+  fi
+}
+
 test_assistant_create_codeinterpreter() {
   local name="assistant-create-codeinterpreter"
   local req="$OUTPUT_DIR/requests/${name}.request.json"
@@ -683,6 +731,93 @@ REQ
   fi
   local res="$OUTPUT_DIR/responses/${name}.response.json"
   assert_jq "$res" '.data.recipients | type == "array"' "$name recipients array"
+}
+
+test_assistant_delete() {
+  if [[ "$DESTRUCTIVE" != true ]]; then
+    log_warn "--destructive not set; skipping assistant/delete"
+    record_result "assistant-delete skipped" true
+    return 0
+  fi
+  
+  if [[ -z "$ASSISTANT_ID" ]]; then
+    log_warn "No ASSISTANT_ID; skipping assistant/delete"
+    record_result "assistant-delete skipped" true
+    return 0
+  fi
+  
+  local name="assistant-delete"
+  local req="$OUTPUT_DIR/requests/${name}.request.json"
+  
+  cat > "$req" <<REQ
+{
+  "data": {
+    "assistantId": "${ASSISTANT_ID}"
+  }
+}
+REQ
+  
+  local http
+  http=$(curl_json "$name" POST "/assistant/delete" "$req")
+  
+  if [[ "$http" != "200" ]]; then
+    record_result "$name http=$http" false
+    return 1
+  fi
+  
+  local res="$OUTPUT_DIR/responses/${name}.response.json"
+  if jq -e '.data.deleted == true' "$res" >/dev/null 2>&1; then
+    record_result "$name deleted true" true
+  elif jq -e '.success == true' "$res" >/dev/null 2>&1; then
+    record_result "$name success" true
+  else
+    record_result "$name response shape" false
+  fi
+}
+
+test_assistant_files_download_codeinterpreter() {
+  if [[ -z "$ASSISTANT_ID" ]]; then
+    log_warn "No ASSISTANT_ID; skipping assistant file download"
+    record_result "assistant-files-download skipped" true
+    return 0
+  fi
+  
+  # This test requires a fileKey from assistant output
+  # Could be populated from assistant chat response
+  if [[ -z "${ASSISTANT_OUTPUT_FILE_KEY:-}" ]]; then
+    log_warn "No assistant output file; skipping download test"
+    record_result "assistant-files-download skipped" true
+    return 0
+  fi
+  
+  local name="assistant-files-download-codeinterpreter"
+  local req="$OUTPUT_DIR/requests/${name}.request.json"
+  
+  cat > "$req" <<REQ
+{
+  "data": {
+    "assistantId": "${ASSISTANT_ID}",
+    "key": "${ASSISTANT_OUTPUT_FILE_KEY}"
+  }
+}
+REQ
+  
+  local http
+  http=$(curl_json "$name" POST "/assistant/files/download/codeinterpreter" "$req")
+  
+  if [[ "$http" != "200" ]]; then
+    record_result "$name http=$http" false
+    return 1
+  fi
+  
+  local res="$OUTPUT_DIR/responses/${name}.response.json"
+  if jq -e '.data.downloadUrl | type == "string"' "$res" >/dev/null 2>&1; then
+    record_result "$name downloadUrl" true
+  elif jq -e '.downloadUrl | type == "string"' "$res" >/dev/null 2>&1; then
+    record_result "$name downloadUrl (compat)" true
+  else
+    record_result "$name downloadUrl" false
+  fi
 }
 
 test_assistant_delete_openai() {
@@ -881,6 +1016,28 @@ REQ
   assert_jq "$res" '.data.tags | type == "array"' "$name tags array"
 }
 
+test_state_share() {
+  local name="state-share"
+  local http
+  http=$(curl_json "$name" GET "/state/share" "")
+  
+  if [[ "$http" != "200" ]]; then
+    record_result "$name http=$http" false
+    return 1
+  fi
+  
+  local res="$OUTPUT_DIR/responses/${name}.response.json"
+  # Validate response has items array (actual API format)
+  if jq -e '.items | type == "array"' "$res" >/dev/null 2>&1; then
+    record_result "$name items array" true
+  elif jq -e '. | type == "array"' "$res" >/dev/null 2>&1; then
+    # Fallback for direct array response (PDF format)
+    record_result "$name array response" true
+  else
+    record_result "$name response shape" false
+  fi
+}
+
 test_state_share_load() {
   if [[ -z "$STATE_KEY" ]]; then
     log_warn "No --state-key provided; skipping state/share/load"
@@ -925,12 +1082,21 @@ run_files() {
   test_files_tags_create_delete || true
 }
 
+run_state() {
+  log_info "Running state management tests"
+  test_state_share || true
+  test_state_share_load || true
+}
+
 run_assistants() {
   log_info "Running assistants tests"
+  test_assistant_create || true
   test_assistant_create_codeinterpreter || true
   test_assistant_chat_codeinterpreter || true
+  test_assistant_files_download_codeinterpreter || true
   test_assistant_share || true
   test_assistant_list || true
+  test_assistant_delete || true
   test_assistant_thread_delete || true
   test_assistant_delete_openai || true
 }
@@ -986,12 +1152,15 @@ case "$MODE" in
     run_embed ;;
   files)
     run_files ;;
+  state)
+    run_state ;;
   assistants)
     run_assistants ;;
   all)
     run_smoke
     run_embed
     run_files
+    run_state
     run_assistants
     if [[ "$ENABLE_CHAT_DOC" == true ]]; then test_chat_doc_shape || true; fi ;;
   *)
