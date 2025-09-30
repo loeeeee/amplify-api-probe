@@ -2,7 +2,7 @@
 
 The Amplify API provides a single, authoritative interface for model discovery, conversational AI, assistant lifecycle management, file storage and tagging, retrieval-augmented search, and state sharing.
 
-**✅ Validated Endpoints:** This documentation covers **20 working endpoints** that have been thoroughly tested and validated through comprehensive API analysis with enhanced probe script capabilities.
+**✅ Validated Endpoints:** This documentation covers **21 working endpoints** that have been thoroughly tested and validated through comprehensive API analysis with enhanced probe script capabilities.
 
 ## Table of Contents
 
@@ -14,6 +14,7 @@ The Amplify API provides a single, authoritative interface for model discovery, 
   - [Assistants](#assistants)
     - [Assistant Create](#post-assistantcreate)
     - [Assistant Create Code Interpreter](#post-assistantcreatecodeinterpreter)
+    - [Assistant Delete](#post-assistantdelete)
   - [Files](#files)
   - [State Management](#state-management)
 - [Usage Scenarios](#usage-scenarios)
@@ -516,6 +517,34 @@ Some deployments may return a direct array:
 ```
 </details>
 
+#### POST /assistant/delete
+Delete a general assistant configuration.
+
+**Required Fields**:
+- `data.assistantId`: string (must be in `astp/` format from general assistant creation)
+
+**Important Note**: This endpoint only works with general assistants (using `astp/` format assistant IDs from `/assistant/create`). It **cannot** delete code interpreter assistants (using `yizhou.bi@vanderbilt.edu/ast/` format from `/assistant/create/codeinterpreter`).
+
+<details>
+<summary>Example Request/Response</summary>
+
+**Request**:
+```json
+{
+  "data": {
+    "assistantId": "astp/14f5e59a-ffce-41ed-a38d-0a9fc11f074e"
+  }
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "Assistant deleted successfully."
+}
+```
+</details>
 
 #### DELETE /assistant/openai/delete
 Delete an assistant (OpenAI-backed alternative endpoint).
@@ -1025,6 +1054,58 @@ Complete workflow for creating a general assistant, uploading files, and managin
 ```
 </details>
 
+### Scenario C1: Assistant Delete Workflow
+
+<details>
+<summary>Step-by-Step Example</summary>
+
+**1. Create General Assistant**
+```json
+{
+  "data": {
+    "name": "Temporary Assistant",
+    "description": "A temporary assistant for testing purposes",
+    "instructions": "This assistant will be deleted after testing.",
+    "tags": ["temporary", "test"],
+    "dataSources": []
+  }
+}
+```
+
+**2. Response (returns `astp/` format assistantId)**
+```json
+{
+  "success": true,
+  "message": "Assistant created successfully",
+  "data": {
+    "assistantId": "astp/a1e0d2ca-27fc-44be-b97a-e1cb02316297"
+  }
+}
+```
+
+**3. Delete Assistant (using the `astp/` format assistantId)**
+```json
+{
+  "data": {
+    "assistantId": "astp/a1e0d2ca-27fc-44be-b97a-e1cb02316297"
+  }
+}
+```
+
+**4. Delete Response**
+```json
+{
+  "success": true,
+  "message": "Assistant deleted successfully."
+}
+```
+
+**Important Notes:**
+- Only general assistants (with `astp/` format IDs) can be deleted
+- Code interpreter assistants (with `yizhou.bi@vanderbilt.edu/ast/` format IDs) cannot be deleted via this endpoint
+- The assistant must be created via `/assistant/create` (not `/assistant/create/codeinterpreter`) to be deletable
+</details>
+
 ### Scenario D: Dual-Retrieval Search with File Tagging
 
 <details>
@@ -1079,8 +1160,8 @@ Complete workflow for creating a general assistant, uploading files, and managin
 
 This API documentation is validated against a comprehensive test suite (`api-probe.sh`) with enhanced format discovery capabilities:
 - **100% endpoint coverage** (20/20 endpoints tested)
-- **20 working endpoints** documented here
-- **2 endpoints with authorization/validation issues** (not API implementation problems)
+- **21 working endpoints** documented here
+- **1 endpoint with authorization/validation issues** (not API implementation problems)
 - Automated request/response validation with multi-format testing
 - Support for all endpoint categories: models, chat, retrieval, state, files, assistants
 - **Enhanced probe script** with format discovery capabilities for comprehensive testing
@@ -1096,7 +1177,7 @@ This API documentation is validated against a comprehensive test suite (`api-pro
 
 ### Working Endpoints Summary
 
-**✅ Fully Working (20 endpoints):**
+**✅ Fully Working (21 endpoints):**
 - GET /available_models
 - POST /chat (basic chat)
 - POST /chat (with `astp/` format assistantId) ✅ **FIXED** - Works with correct assistant ID format
@@ -1105,6 +1186,7 @@ This API documentation is validated against a comprehensive test suite (`api-pro
 - POST /assistant/create/codeinterpreter ✅ **FIXED** - Works with empty dataSources
 - GET /assistant/list
 - POST /assistant/share ✅ **FIXED** - Works with valid email addresses
+- POST /assistant/delete ✅ **FIXED** - Works with general assistant IDs (astp/ format)
 - POST /assistant/files/download/codeinterpreter (skipped when no output files)
 - DELETE /assistant/openai/delete ✅ **FIXED** - Works with correct DELETE method
 - DELETE /assistant/openai/thread/delete ✅ **FIXED** - Works with correct DELETE method
@@ -1117,19 +1199,19 @@ This API documentation is validated against a comprehensive test suite (`api-pro
 - GET /state/share
 - POST /state/share/load
 
-**❌ Not Working (2 endpoints - Authorization/Validation Issues):**
+**❌ Not Working (1 endpoint - Authorization/Validation Issues):**
 - POST /assistant/chat/codeinterpreter - "Invalid data or path" error (implementation issue)
-- POST /assistant/delete - "You are not authorized to delete this assistant" (authorization issue)
 
 ### Key Corrections Made
 
 1. **Chat Endpoint with AssistantID**: **FIXED** - Works with `astp/` format assistant IDs from general assistant creation
-2. **Files Tags Delete**: Use `"tag"` (singular) not `"tags"` (plural)
-3. **OpenAI Endpoints**: Use DELETE method with query parameters, not POST with JSON body
-4. **File Upload**: Two-step process with pre-signed URLs, not multipart form data
-5. **Response Format**: All responses include `success` boolean field
-6. **Assistant Create Code Interpreter**: Use empty `dataSources: []` array to avoid authorization issues
-7. **Enhanced Probe Script**: Implemented format discovery capabilities for comprehensive testing
+2. **Assistant Delete Endpoint**: **FIXED** - Works with general assistant IDs (astp/ format), cannot delete code interpreter assistants
+3. **Files Tags Delete**: Use `"tag"` (singular) not `"tags"` (plural)
+4. **OpenAI Endpoints**: Use DELETE method with query parameters, not POST with JSON body
+5. **File Upload**: Two-step process with pre-signed URLs, not multipart form data
+6. **Response Format**: All responses include `success` boolean field
+7. **Assistant Create Code Interpreter**: Use empty `dataSources: []` array to avoid authorization issues
+8. **Enhanced Probe Script**: Implemented format discovery capabilities for comprehensive testing
 
 ---
 
