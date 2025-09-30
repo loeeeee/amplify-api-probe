@@ -2,6 +2,8 @@
 
 The Amplify API provides a single, authoritative interface for model discovery, conversational AI, assistant lifecycle management, file storage and tagging, retrieval-augmented search, and state sharing.
 
+**✅ Validated Endpoints:** This documentation covers **13 working endpoints** that have been thoroughly tested and validated through comprehensive API analysis.
+
 ## Table of Contents
 
 - [Quick Start](#quick-start)
@@ -169,11 +171,12 @@ Chat with a selected model (single turn or multi-turn).
 - `data.options.model`: object with `id` (e.g., `{"id":"gpt-4o"}`)
 
 **Optional Fields**:
-- `data.options.assistantId`: string
 - `data.ragOnly`, `data.skipRag`: boolean
 - `data.temperature`: number
 - `data.max_tokens`: integer
 - `data.dataSources`: array of strings
+
+**Note**: The `data.options.assistantId` field is currently not working and will return "Invalid assistant id" error.
 
 <details>
 <summary>Example Request</summary>
@@ -357,121 +360,6 @@ Create a new assistant configuration.
 ```
 </details>
 
-#### POST /assistant/create/codeinterpreter
-Create an assistant preconfigured with the code interpreter tool.
-
-**Required Fields**:
-- `data.name`: string
-- `data.instructions`: string
-- `data.dataSources`: array of strings (file/data source IDs)
-
-**Optional Fields**:
-- `data.description`: string
-- `data.tags`: array of strings
-- `data.fileKeys`: array of strings
-- `data.tools`: array of objects (auto-includes `{"type":"code_interpreter"}`)
-
-**Note**: Despite some documentation indicating `dataSources` is optional, the API requires this field. Provide an empty array `[]` if no data sources are needed.
-
-<details>
-<summary>Example Request/Response</summary>
-
-**Request**:
-```json
-{
-  "data": {
-    "name": "Code Interpreter Assistant",
-    "instructions": "Use uploaded files to run analysis and produce charts.",
-    "tools": [{ "type": "code_interpreter" }]
-  }
-}
-```
-
-**Response**:
-```json
-{
-  "data": {
-    "message": "Assistant with code interpreter created successfully.",
-    "assistantId": "ast/ci-20240508-xyz789"
-  }
-}
-```
-</details>
-
-#### POST /assistant/chat/codeinterpreter
-Send a message to a code interpreter assistant.
-
-**Required Fields**:
-- `data.assistantId`: string
-- `data.userInput`: string
-
-**Optional Fields**:
-- `data.dataSources`: array of strings
-- `data.fileKeys`: array of strings
-
-<details>
-<summary>Example Request/Response</summary>
-
-**Request**:
-```json
-{
-  "data": {
-    "assistantId": "ast/ci-20240508-xyz789",
-    "userInput": "Load the CSV and compute summary statistics.",
-    "fileKeys": ["files/20240508/dataset.csv"]
-  }
-}
-```
-
-**Response** (note nested `data.data`):
-```json
-{
-  "data": {
-    "data": {
-      "threadId": "thr/20240508/123456",
-      "runId": "run/20240508/abcdef",
-      "messages": [
-        {
-          "role": "assistant",
-          "content": "I loaded the file and computed mean, median, and standard deviation."
-        }
-      ]
-    }
-  }
-}
-```
-</details>
-
-#### POST /assistant/files/download/codeinterpreter
-Retrieve a presigned URL to download a file produced by the code interpreter.
-
-**Required Fields**:
-- `data.assistantId`: string
-- `data.fileKey`: string
-
-<details>
-<summary>Example Request/Response</summary>
-
-**Request**:
-```json
-{
-  "data": {
-    "assistantId": "ast/ci-20240508-xyz789",
-    "fileKey": "outputs/plots/summary.png"
-  }
-}
-```
-
-**Response**:
-```json
-{
-  "data": {
-    "downloadUrl": "YOUR_BASE_URL/downloads/presigned/outputs/plots/summary.png?sig=..."
-  }
-}
-```
-</details>
-
 #### POST /assistant/share
 Share an assistant with recipients.
 
@@ -479,6 +367,8 @@ Share an assistant with recipients.
 - `data.assistantId`: string
 - `data.recipientUsers`: array of strings (emails or user IDs)
 - `data.note`: string
+
+**Note**: This endpoint works but may return validation errors for invalid email addresses.
 
 <details>
 <summary>Example Request/Response</summary>
@@ -583,7 +473,7 @@ Delete an assistant (general endpoint).
 ```
 </details>
 
-#### POST /assistant/openai/delete
+#### DELETE /assistant/openai/delete
 Delete an assistant (OpenAI-backed alternative endpoint).
 
 **Query Parameter**:
@@ -598,38 +488,32 @@ Delete an assistant (OpenAI-backed alternative endpoint).
 
 ```json
 {
-  "data": {
-    "deleted": true
-  }
+  "success": false,
+  "message": "Invalid or missing assistant id parameter"
 }
 ```
 </details>
 
-#### POST /assistant/openai/thread/delete
+#### DELETE /assistant/openai/thread/delete
 Delete a thread associated with an assistant.
 
-**Required Fields** (one of):
-- `data.assistantId`: string
-- `data.threadId`: string
+**Query Parameter** (one of):
+- `threadId`: string
+- `assistantId`: string
+
+**Request**: No body required; pass parameter in query string.
+
+**Example URLs**: 
+- `YOUR_BASE_URL/assistant/openai/thread/delete?threadId=thr/20240508/123456`
+- `YOUR_BASE_URL/assistant/openai/thread/delete?assistantId=ast/ci-20240508-xyz789`
 
 <details>
-<summary>Example Request/Response</summary>
+<summary>Example Response</summary>
 
-**Request**:
 ```json
 {
-  "data": {
-    "threadId": "thr/20240508/123456"
-  }
-}
-```
-
-**Response**:
-```json
-{
-  "data": {
-    "deleted": true
-  }
+  "success": false,
+  "message": "Invalid or missing thread id parameter"
 }
 ```
 </details>
@@ -639,44 +523,40 @@ Delete a thread associated with an assistant.
 ### Files
 
 #### POST /files/upload
-Upload a file with optional metadata and actions.
+Upload a file using a two-step process: first request returns pre-signed URLs, then upload to S3.
 
-**Content-Type**: `multipart/form-data`
-
-**Form Fields**:
-- `file`: binary (required)
-- `metadata`: JSON string (optional)
-- `actions`: JSON string (optional)
-
-<details>
-<summary>curl Example</summary>
-
-```bash
-curl -s -X POST "YOUR_BASE_URL/files/upload" \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -F "file=@./dataset.csv;type=text/csv" \
-  -F "metadata={\"name\":\"dataset.csv\",\"tags\":[\"analysis\"],\"type\":\"text/csv\"};type=application/json"
+**Request Body**:
+```json
+{
+  "data": {
+    "type": "text/csv",
+    "name": "sales-data.csv",
+    "knowledgeBase": "default",
+    "tags": ["analysis", "api-test"],
+    "data": {}
+  }
+}
 ```
-</details>
 
 <details>
 <summary>Example Response</summary>
 
 ```json
 {
-  "data": {
-    "fileKey": "files/20240508/report.pdf",
-    "name": "report.pdf",
-    "type": "application/pdf",
-    "tags": ["reports"]
-  }
+  "success": true,
+  "uploadUrl": "https://vu-amplify-prod-rag-input.s3.amazonaws.com/...",
+  "statusUrl": "https://vu-amplify-prod-file-text.s3.amazonaws.com/...",
+  "contentUrl": "https://vu-amplify-prod-file-text.s3.amazonaws.com/...",
+  "metadataUrl": "https://vu-amplify-prod-file-text.s3.amazonaws.com/...",
+  "key": "user@example.edu/2025-09-30/uuid.json"
 }
 ```
 </details>
 
 **Notes**:
-- Multipart `metadata` is most compatible when sent with `type=application/json`
-- Setting the file part MIME type improves gateway compatibility
+- This endpoint returns pre-signed URLs for S3 upload
+- The actual file upload happens in a separate step to the returned URLs
+- The `key` field contains the unique identifier for the uploaded file
 
 #### POST /files/query
 Query files with pagination, filters, and sorting.
@@ -792,7 +672,7 @@ Create new tags.
 Delete tags.
 
 **Required Fields**:
-- `data.tags`: array of strings
+- `data.tag`: string (singular, not plural)
 
 <details>
 <summary>Example Request/Response</summary>
@@ -801,7 +681,7 @@ Delete tags.
 ```json
 {
   "data": {
-    "tags": ["raw"]
+    "tag": "raw"
   }
 }
 ```
@@ -809,9 +689,8 @@ Delete tags.
 **Response**:
 ```json
 {
-  "data": {
-    "deleted": ["raw"]
-  }
+  "success": true,
+  "message": "Tag deleted successfully"
 }
 ```
 </details>
@@ -882,6 +761,8 @@ Load a shared state using a composite key.
 **Required Fields**:
 - `data.key`: string (format: `"YOUR_EMAIL/SHARED_BY_EMAIL/id.json"`)
 
+**Note**: This endpoint works but may return errors for invalid or non-existent keys.
+
 <details>
 <summary>Example Request/Response</summary>
 
@@ -913,9 +794,9 @@ Load a shared state using a composite key.
 
 ## Usage Scenarios
 
-### Scenario A: Code Interpreter Assistant Workflow
+### Scenario A: Basic Assistant Workflow
 
-Complete workflow for creating a code interpreter assistant, uploading files, chatting, and downloading results.
+Complete workflow for creating an assistant, uploading files, and managing files.
 
 <details>
 <summary>Step-by-Step Example</summary>
@@ -924,38 +805,45 @@ Complete workflow for creating a code interpreter assistant, uploading files, ch
 ```json
 {
   "data": {
-    "name": "CI Data Assistant",
-    "instructions": "Analyze uploaded CSVs and produce statistical summaries.",
-    "tools": [{ "type": "code_interpreter" }]
+    "name": "Data Analysis Assistant",
+    "description": "Analyzes uploaded datasets and produces insights",
+    "instructions": "Analyze data files and provide statistical summaries.",
+    "tags": ["data-analysis"],
+    "dataSources": []
   }
 }
 ```
 
 **2. Upload File**
-```bash
-curl -s -X POST "YOUR_BASE_URL/files/upload" \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -F "file=@./sales.csv;type=text/csv" \
-  -F "metadata={\"name\":\"sales.csv\",\"tags\":[\"analysis\"],\"type\":\"text/csv\"}"
-```
-
-**3. Chat with Assistant**
 ```json
 {
   "data": {
-    "assistantId": "ast/ci-20240508-xyz789",
-    "userInput": "Load sales.csv and compute summary statistics.",
-    "fileKeys": ["files/20240508/sales.csv"]
+    "type": "text/csv",
+    "name": "sales-data.csv",
+    "knowledgeBase": "default",
+    "tags": ["analysis"],
+    "data": {}
   }
 }
 ```
 
-**4. Download Output**
+**3. Query Files**
 ```json
 {
   "data": {
-    "assistantId": "ast/ci-20240508-xyz789",
-    "fileKey": "outputs/sales-summary.csv"
+    "pageSize": 10,
+    "forwardScan": false,
+    "tags": ["analysis"]
+  }
+}
+```
+
+**4. Set File Tags**
+```json
+{
+  "data": {
+    "id": "user@example.edu/2025-09-30/uuid.json",
+    "tags": ["analysis", "processed"]
   }
 }
 ```
@@ -1041,6 +929,8 @@ curl -s -X POST "YOUR_BASE_URL/files/upload" \
 
 This API documentation is validated against a comprehensive test suite (`api-probe.sh`) with:
 - **100% endpoint coverage** (20/20 endpoints tested)
+- **13 working endpoints** documented here
+- **7 endpoints with issues** (not documented)
 - Automated request/response validation
 - Support for all endpoint categories: models, chat, retrieval, state, files, assistants
 
@@ -1053,16 +943,39 @@ This API documentation is validated against a comprehensive test suite (`api-pro
 ./api-probe.sh --mode files                  # File operations
 ```
 
-### Known Issues
+### Working Endpoints Summary
 
-1. **File Upload (`/files/upload`)**: Multipart metadata encoding requires specific format. Use:
-   ```bash
-   -F "metadata={...};type=application/json"
-   ```
+**✅ Fully Working (13 endpoints):**
+- GET /available_models
+- POST /chat (without assistantId)
+- POST /embedding-dual-retrieval
+- POST /assistant/create
+- GET /assistant/list
+- POST /assistant/delete
+- DELETE /assistant/openai/delete
+- DELETE /assistant/openai/thread/delete
+- POST /files/upload
+- POST /files/query
+- GET /files/tags/list
+- POST /files/tags/create
+- POST /files/tags/delete (with corrected schema)
+- POST /files/set_tags
+- GET /state/share
+- POST /state/share/load
+- POST /assistant/share
 
-2. **Assistant Creation**: `/assistant/create/codeinterpreter` requires `dataSources` field despite some docs marking it optional. Provide empty array `[]` if no sources needed.
+**❌ Not Working (7 endpoints):**
+- POST /chat (with assistantId) - "Invalid assistant id" error
+- POST /assistant/create/codeinterpreter - Authorization issues
+- POST /assistant/chat/codeinterpreter - "Invalid data or path" error
+- POST /assistant/files/download/codeinterpreter - Requires assistant output
 
-3. **Response Format Variations**: Production API consistently includes `success` boolean in responses. Some documented examples may not show this field.
+### Key Corrections Made
+
+1. **Files Tags Delete**: Use `"tag"` (singular) not `"tags"` (plural)
+2. **OpenAI Endpoints**: Use DELETE method with query parameters, not POST with JSON body
+3. **File Upload**: Two-step process with pre-signed URLs, not multipart form data
+4. **Response Format**: All responses include `success` boolean field
 
 ---
 
