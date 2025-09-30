@@ -149,6 +149,12 @@ if [[ -z "$TOKEN" ]]; then
   exit 2
 fi
 
+# Clean output directory before starting
+if [[ -d "$OUTPUT_DIR" ]]; then
+  log_info "Cleaning previous results from $OUTPUT_DIR"
+  rm -rf "$OUTPUT_DIR"
+fi
+
 mkdir -p "$OUTPUT_DIR/requests" "$OUTPUT_DIR/responses" "$OUTPUT_DIR/headers"
 
 # Global state captured across steps
@@ -741,13 +747,20 @@ test_files_upload() {
   local path_to_upload="${SAMPLE_FILE}"
   if [[ -z "$path_to_upload" || ! -f "$path_to_upload" ]]; then
     if [[ -n "$path_to_upload" && ! -f "$path_to_upload" ]]; then
-      log_warn "Sample file not found at ${path_to_upload}; using a temporary CSV"
+      log_warn "Sample file not found at ${path_to_upload}"
     fi
-    tmpfile=$(mktemp)
-    echo "col1,col2" > "$tmpfile"
-    echo "1,2" >> "$tmpfile"
-    echo "3,4" >> "$tmpfile"
-    path_to_upload="$tmpfile"
+    # Try to use bundled sample data
+    if [[ -f "sample-data/sales-data.csv" ]]; then
+      path_to_upload="sample-data/sales-data.csv"
+      log_info "Using bundled sample file: ${path_to_upload}"
+    else
+      log_warn "No sample file provided; creating temporary CSV"
+      tmpfile=$(mktemp)
+      echo "col1,col2" > "$tmpfile"
+      echo "1,2" >> "$tmpfile"
+      echo "3,4" >> "$tmpfile"
+      path_to_upload="$tmpfile"
+    fi
   fi
   local metadata
   metadata=$(jq -nc --arg n "$(basename "$path_to_upload")" '{name:$n, tags:["analysis","api-test"], type:"text/csv"}')
