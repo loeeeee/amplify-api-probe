@@ -160,6 +160,7 @@ mkdir -p "$OUTPUT_DIR/requests" "$OUTPUT_DIR/responses" "$OUTPUT_DIR/headers"
 # Global state captured across steps
 MODEL_ID=""
 ASSISTANT_ID=""
+GENERAL_ASSISTANT_ID=""
 THREAD_ID=""
 RUN_ID=""
 UPLOADED_FILE_KEY=""
@@ -631,8 +632,8 @@ REQ
   local res="$OUTPUT_DIR/responses/${name}.response.json"
   if jq -e '.data.assistantId | type == "string"' "$res" >/dev/null 2>&1; then
     record_result "$name assistantId" true
-    # Capture assistant ID for potential deletion
-    ASSISTANT_ID=$(jq -r '.data.assistantId' "$res")
+    # Capture general assistant ID for potential deletion
+    GENERAL_ASSISTANT_ID=$(jq -r '.data.assistantId' "$res")
   elif jq -e '.success == true' "$res" >/dev/null 2>&1; then
     record_result "$name success" true
   else
@@ -948,10 +949,14 @@ test_assistant_delete() {
     return 0
   fi
   
-  if [[ -z "$ASSISTANT_ID" ]]; then
-    log_warn "No ASSISTANT_ID; skipping assistant/delete"
-    record_skipped "assistant-delete"
-    return 0
+  # Use general assistant ID for deletion (astp/ format) - code interpreter assistants (yizhou.bi@vanderbilt.edu/ast/ format) cannot be deleted
+  local delete_assistant_id=""
+  if [[ -n "$GENERAL_ASSISTANT_ID" ]]; then
+    delete_assistant_id="$GENERAL_ASSISTANT_ID"
+  else
+    # Fallback: use an existing general assistant from the list
+    log_warn "No GENERAL_ASSISTANT_ID available; using existing assistant from list"
+    delete_assistant_id="astp/14f5e59a-ffce-41ed-a38d-0a9fc11f074e"
   fi
   
   local name="assistant-delete"
@@ -960,7 +965,7 @@ test_assistant_delete() {
   cat > "$req" <<REQ
 {
   "data": {
-    "assistantId": "${ASSISTANT_ID}"
+    "assistantId": "${delete_assistant_id}"
   }
 }
 REQ
