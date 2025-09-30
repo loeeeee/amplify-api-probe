@@ -1,0 +1,11 @@
+CustomerID,FeedbackDate,Rating,Category,Comment
+C001,2024-09-01,5,Service,Excellent customer support and fast response time
+C002,2024-09-02,4,Product,Good quality but slightly expensive
+C003,2024-09-03,5,Delivery,Package arrived earlier than expected
+C004,2024-09-04,3,Product,Product works well but instructions unclear
+C005,2024-09-05,5,Service,Very helpful staff resolved my issue quickly
+C006,2024-09-06,4,Product,Great features but setup was complicated
+C007,2024-09-07,5,Delivery,Perfect condition and well packaged
+C008,2024-09-08,2,Service,Long wait time for customer support
+C009,2024-09-09,5,Product,Exceeded my expectations in every way
+C010,2024-09-10,4,Delivery,Delivery was on time but box was damaged

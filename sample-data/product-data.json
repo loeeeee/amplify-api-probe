@@ -1,0 +1,36 @@
+{
+  "products": [
+    {
+      "id": "PROD-001",
+      "name": "Widget A",
+      "category": "Electronics",
+      "price": 20.00,
+      "stock": 500,
+      "features": ["Compact", "Energy Efficient", "Durable"],
+      "description": "A reliable and efficient widget for everyday use."
+    },
+    {
+      "id": "PROD-002",
+      "name": "Widget B",
+      "category": "Electronics",
+      "price": 40.00,
+      "stock": 350,
+      "features": ["Advanced", "Wireless", "Smart Connectivity"],
+      "description": "Advanced widget with smart features and wireless capabilities."
+    },
+    {
+      "id": "PROD-003",
+      "name": "Widget C",
+      "category": "Electronics",
+      "price": 50.00,
+      "stock": 200,
+      "features": ["Premium", "High Performance", "Extended Warranty"],
+      "description": "Premium widget designed for professional use with maximum performance."
+    }
+  ],
+  "metadata": {
+    "catalog_version": "2024.09",
+    "last_updated": "2024-09-30",
+    "currency": "USD"
+  }
+}
